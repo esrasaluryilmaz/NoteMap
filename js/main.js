@@ -5,28 +5,33 @@
 */
 
 import { personIcon } from "./constants.js";
+import { getNoteIcon, getStatus } from "./helpers.js";
 import elements from "./ui.js";
 
-//Global Degiskenler
+// Global Degiskenler
 var map;
 let clickedCoords;
-let notes = JSON.parse(localStorage.getItem("notes"));
+let layer;
+// Localstorage'dan notes keyine sahip elemanları al
+let notes = JSON.parse(localStorage.getItem("notes")) || [];
 
 // window icerisindeki navigator objesi icerisinde kullanicinin acmis oldugu sekme ile alakali bircok veriyi bulundurur. (koordinat, tarayici ile alakali veriler, pc ile alakali veriler) Bizde bu yapi icerisindeki geolocation yapisiyla koordinat verisine eristik .  Geolocation icerisinde getCurrentPosition kullanicin mevcut konumu almak icin kullanilir. Bu fonk icerisinde iki adet callBack fonk. ister birincisi kullanicin konum bilgisini paylasmasi durumunda ikincisi paylasmamasi durumunda calisir.
 
 window.navigator.geolocation.getCurrentPosition(
   (e) => {
     //Konum bilgisi paylasildiginda
-    loadMap([e.coords.latitude, e.coords.longitude], "Mevcut konum");
+    loadMap([e.coords.latitude, e.coords.longitude], "Mevcut Konum");
   },
   (e) => {
     //Konum bilgisi paylasilmadiginda
-    loadMap([46.497204, 9.837988], "Varsayilan konum");
+    loadMap([50.6484749, 5.5118715], "Varsayilan konum");
   }
 );
 //! Haritayi olusturan fonk.
 function loadMap(currentPosition, msg) {
-  map = L.map("map", { zoomControl: false }).setView(currentPosition, 12);
+  map = L.map("map", {
+    zoomControl: false,
+  }).setView(currentPosition, 12);
 
   L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution:
@@ -34,27 +39,39 @@ function loadMap(currentPosition, msg) {
   }).addTo(map);
 
   // Zoom araclarinin konumunu belirle
+  L.control
+    .zoom({
+      position: "bottomright",
+    })
+    .addTo(map);
   // Ekrana basilacak bir
 
-  let layer = L.layerGroup().addTo(map);
+  layer = L.layerGroup().addTo(map);
+
   //Kullanicinin baslangic konumuna bir marker ekle
   L.marker(currentPosition, { icon: personIcon }).addTo(map).bindPopup(msg);
 
   // Harita uzeinde tiklanma olayini izle
   map.on("click", onMapClick);
+
+  //Notlari render edecek fonk.
+  renderNotes();
+
+  // Markerları render eden fonksiyon
+  renderMarkers();
 }
 //! haritaya tiklandiginda calisacak fonksiyon.
 function onMapClick(e) {
-  //Tiklanilan yerin kordinatlarina eris
+  // Tıklanılan yerin kordinatlarına eriş
   clickedCoords = [e.latlng.lat, e.latlng.lng];
 
-  //Aside'a add classini ekle
+  // Aside'a add classını ekle
   elements.aside.classList.add("add");
 }
 
-//! Form gonderildiginde calisacak fonksiyon
+// ! Form gönderildiğinde çalışacak fonksiyon
 elements.form.addEventListener("submit", (e) => {
-  //Sayfa yenilemeyi engelle
+  // Sayfa yenilemeyi engelle
   e.preventDefault();
 
   //Form icerisindeki degere eris
@@ -62,7 +79,8 @@ elements.form.addEventListener("submit", (e) => {
   const date = e.target[1].value;
   const status = e.target[2].value;
 
-  //Bir tane not objesi olustur
+  // Bir tane not objesi oluştur
+
   const newNote = {
     id: new Date().getTime(),
     title,
@@ -75,7 +93,7 @@ elements.form.addEventListener("submit", (e) => {
   notes.push(newNote);
 
   // Locakstorage'a notlari kaydet
-  localStorage.setItem("notes", JSON.stringify(newNote));
+  localStorage.setItem("notes", JSON.stringify(notes));
 
   //Formu resetle
   e.target.reset();
@@ -84,8 +102,10 @@ elements.form.addEventListener("submit", (e) => {
   elements.aside.classList.remove("add");
 
   //Notelari render et
+  renderNotes();
 
-  renderNotees();
+  // Markerlari render eden fonksiyon
+  renderMarkers();
 });
 
 //Close btn'e tiklaninca aside'i tekrardan eski haline getir
@@ -94,23 +114,103 @@ elements.cancelBtn.addEventListener("click", () => {
 });
 
 // Mevcut notlari render eden bir fonk
-function renderNotees() {
+function renderNotes() {
   //note dizisini donerek herbir not icin bir html olustur
-  const noteCard = notes.map(
-    (note) => ` <li>
-          <div>
-            <p>İstanbul Gezi</p>
-            <p>13 Ocak 2025</p>
-            <p>Park</p>
-          </div>
+  const noteCard = notes
+    .map((note) => {
+      // Tarih ayarlaması
+      const date = new Date(note.date).toLocaleDateString("tr", {
+        day: "numeric",
+        month: "long",
+        year: "numeric",
+      });
 
-          <div class="icons">
-            <i class="bi bi-airplane-fill" id="fly-btn"></i>
-            <i class="bi bi-trash" id="delete-btn"></i>
-          </div>
-        </li>`
-  );
+      //Status ayarlamasi
+      //  getStatus adında bir fonksiyon yazıldı.Bu fonksiyon kendisine verilen status değerine göre uygun ifadeyi return etti
+      return ` <li>
+
+      <div>
+        <p>${note.title}</p>
+        <p>${date}</p>
+        <p>${getStatus(note.status)}</p>
+        
+      </div>
+  
+      <div class="icons">
+        <i data-id='${note.id}' class="bi bi-airplane-fill" id="fly-btn"></i>
+        <i data-id='${note.id}' class="bi bi-trash" id="delete-btn"></i>
+      </div>
+    </li>`;
+    })
+    .join("");
 
   // Ilgili html'i arayuze eekle
-  elements.noteList.innerHtml = noteCard;
+  elements.noteList.innerHTML = noteCard;
+  // Delete iconlarina eris
+  document.querySelectorAll("#delete-btn").forEach((btn) => {
+    // Delete iconuna data id'sine eris
+    const id = btn.dataset.id;
+
+    // Delete iconlarina tiklayinca delete note fonksiyonlarini calistir
+    btn.addEventListener("click", () => {
+      deleteNote(id);
+    });
+  });
+
+  //Fly iconlara eris
+  document.querySelectorAll("#fly-btn").forEach((btn) => {
+    //Fly Btn'e tiklaninca flyNote fonk. calistir
+
+    btn.addEventListener("click", () => {
+      //Fly btn inin idsine eris
+      const id = +btn.dataset.id;
+      flyToNote(id);
+    });
+  });
 }
+
+// Her not icin bir marker render eden fonksiyon
+function renderMarkers() {
+  //Haritadaki maelerlari sifirlar
+  layer.clearLayers();
+  notes.map((note) => {
+    //eklenecek ikonun turune karar ver
+    const icon = getNoteIcon(note.status);
+    // Not icin bir marker olustur
+    L.marker(note.coords, { icon }).addTo(layer).bindPopup(note.title);
+  });
+}
+
+// Deelete Function
+function deleteNote(id) {
+  //Kullanicidan onay al
+  const res = confirm("Not silme islemini onayliyor musunuz?");
+
+  // Eger kullanici onayladiysa
+  if (res) {
+    //Id'si bilinen not'u note dizisinden kaldir
+    notes = notes.filter((note) => note.id != id);
+
+    console.log(notes);
+    // localstorage'i guncelle
+    localStorage.setItem("notes", JSON.stringify(notes));
+
+    //notlari render et
+    renderNotes();
+
+    // markerleri render et
+    renderMarkers();
+  }
+}
+//Notlara focuslanan fonk.
+function flyToNote(id) {
+  // Id'si bilinen notu note dizisinin icerisinden bul
+  const foundedNote = notes.find((note) => id == id);
+
+  //Bulunan note fokuslan
+  map.flyTo(foundedNote.coords, 12);
+}
+//arrowIcon'a tiklaninca calisacak fonk.
+elements.arrowIcon.addEventListener("click", () => {
+  elements.aside.classList.toggle("hide");
+});
